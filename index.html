@@ -1,0 +1,999 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>NewCount Contagem</title>
+<style>
+:root {
+  --navy: #1F497D;
+  --navy-deep: #142E4C;
+  --paper: #F7F4EC;
+  --panel: #FFFFFF;
+  --line: #E1DAC6;
+  --ink: #23211C;
+  --muted: #756F60;
+  --brass: #A8792A;
+  --brass-tint: #F0E4C8;
+  --green: #1E7145;
+  --red: #B3402F;
+  --radius: 10px;
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  overscroll-behavior-y: contain;
+}
+h1, h2, h3 { font-family: 'Source Serif 4', Georgia, serif; margin: 0; }
+button { font-family: inherit; }
+
+.topbar {
+  position: sticky; top: 0; z-index: 5;
+  background: var(--navy-deep); color: #fff;
+  padding: calc(12px + env(safe-area-inset-top, 0px)) 16px 12px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.topbar .brand { font-family: 'Source Serif 4', serif; font-size: 16px; font-weight: 600; }
+.topbar .stats { font-size: 12px; color: #C9D3E0; text-align: right; line-height: 1.4; }
+
+.screen { display: none; padding: 16px 16px 90px; max-width: 560px; margin: 0 auto; }
+.screen.active { display: block; }
+
+.card {
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 16px; margin-bottom: 14px;
+}
+.card h2 { font-size: 15.5px; margin-bottom: 10px; }
+.hint { font-size: 12.5px; color: var(--muted); line-height: 1.5; margin-top: 6px; }
+
+textarea, input[type=text] {
+  width: 100%; font-family: inherit; font-size: 14px;
+  border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px;
+  background: var(--paper); color: var(--ink); resize: vertical;
+}
+textarea { min-height: 120px; }
+
+.btn {
+  font-size: 15px; font-weight: 600; border: none; border-radius: 8px;
+  padding: 13px 18px; cursor: pointer; width: 100%;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+}
+.btn-navy { background: var(--navy); color: #fff; }
+.btn-navy:active { background: var(--navy-deep); }
+.btn-gold { background: var(--brass); color: #fff; }
+.btn-outline { background: transparent; color: var(--navy); border: 1.5px solid var(--navy); }
+.btn-ghost { background: transparent; color: var(--muted); text-decoration: underline; font-weight: 500; padding: 8px; }
+.btn:disabled { opacity: .4; cursor: not-allowed; }
+.btn-row { display: flex; gap: 10px; }
+.btn-row .btn { flex: 1; }
+
+.seg { display: flex; border: 1.5px solid var(--navy); border-radius: 8px; overflow: hidden; margin-bottom: 14px; }
+.seg button {
+  flex: 1; border: none; background: #fff; color: var(--navy);
+  padding: 11px 8px; font-size: 13.5px; font-weight: 600; cursor: pointer;
+}
+.seg button.active { background: var(--navy); color: #fff; }
+
+.mic-area { text-align: center; padding: 18px 10px 6px; }
+.mic-btn {
+  width: 108px; height: 108px; border-radius: 50%;
+  border: none; background: var(--navy); color: #fff; font-size: 40px;
+  display: inline-flex; align-items: center; justify-content: center;
+  cursor: pointer; transition: background .15s, transform .1s;
+}
+.mic-btn:active { transform: scale(0.96); }
+.mic-btn.listening { background: var(--brass); animation: pulse 1s ease-in-out infinite; }
+@keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(168,121,42,.4); } 50% { box-shadow: 0 0 0 14px rgba(168,121,42,0); } }
+.mic-label { margin-top: 12px; font-size: 14px; font-weight: 600; color: var(--ink); min-height: 20px; }
+.mic-sub { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+
+.produto-card {
+  display: none;
+  background: var(--brass-tint); border: 1px solid var(--brass);
+  border-radius: var(--radius); padding: 14px 16px; margin: 14px 0;
+}
+.produto-card.show { display: block; }
+.produto-card .desc { font-weight: 700; font-size: 15.5px; }
+.produto-card .cod { font-size: 12.5px; color: var(--muted); margin-top: 3px; }
+.produto-card .cancelar { margin-top: 8px; }
+
+.ambig-list { display: none; margin: 14px 0; }
+.ambig-list.show { display: block; }
+.ambig-item {
+  background: #fff; border: 1px solid var(--line); border-radius: 8px;
+  padding: 12px 14px; margin-bottom: 8px; cursor: pointer;
+}
+.ambig-item:active { background: var(--brass-tint); }
+.ambig-item .desc { font-weight: 600; font-size: 14px; }
+.ambig-item .cod { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+.manual-fallback { margin-top: 10px; }
+.manual-fallback summary { font-size: 12.5px; color: var(--muted); cursor: pointer; text-align: center; list-style: none; }
+.manual-fallback summary::-webkit-details-marker { display: none; }
+.manual-fallback .row { display: flex; gap: 8px; margin-top: 10px; }
+.manual-fallback input { flex: 1; }
+.manual-fallback button { flex: none; padding: 10px 14px; }
+
+.msg { text-align: center; font-size: 13.5px; padding: 10px; border-radius: 8px; margin: 10px 0; display: none; }
+.msg.show { display: block; }
+.msg.err { background: #F7E4DE; color: var(--red); }
+.msg.ok { background: #E1EEE5; color: var(--green); }
+
+.lista-titulo { display: flex; align-items: baseline; justify-content: space-between; margin: 18px 0 8px; }
+.lista-titulo h2 { font-size: 14.5px; color: var(--muted); font-weight: 600; }
+.item-row {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+  padding: 10px 12px; margin-bottom: 8px; display: flex; align-items: center; gap: 10px;
+}
+.item-row .info { flex: 1; min-width: 0; }
+.item-row .desc { font-size: 13.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.item-row .cod { font-size: 11.5px; color: var(--muted); }
+.item-row .qtd {
+  font-family: 'Source Serif 4', serif; font-weight: 700; font-size: 18px;
+  border: 1px solid var(--line); border-radius: 6px; width: 52px; text-align: center;
+  padding: 6px 2px; background: var(--paper); color: var(--ink);
+}
+.item-row .del { background: none; border: none; color: var(--red); font-size: 18px; padding: 4px 6px; cursor: pointer; }
+.empty-note { text-align: center; color: var(--muted); font-size: 13px; padding: 20px 10px; }
+
+.bottombar {
+  position: fixed; bottom: 0; left: 0; right: 0; z-index: 5;
+  background: var(--panel); border-top: 1px solid var(--line);
+  padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px));
+}
+.bottombar .btn-row { max-width: 560px; margin: 0 auto; }
+
+.resumo-num { font-family: 'Source Serif 4', serif; font-size: 34px; font-weight: 700; color: var(--navy); }
+.resumo-grid { display: flex; gap: 18px; margin: 14px 0; }
+.resumo-grid div { flex: 1; text-align: center; }
+.resumo-grid .lbl { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+.chip {
+  display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 9px;
+  border-radius: 20px; background: var(--brass-tint); color: var(--brass); margin-left: 6px;
+}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">NewCount Contagem</div>
+  <div class="stats" id="statsTop"></div>
+</div>
+
+<!-- ===================== TELA 1: CATÁLOGO ===================== -->
+<section class="screen active" id="tela-catalogo">
+  <div class="card" id="cardCatalogoSalvo" style="display:none;">
+    <h2>Catálogo carregado</h2>
+    <div id="infoCatalogoSalvo" class="hint"></div>
+    <div class="btn-row" style="margin-top:12px;">
+      <button class="btn btn-navy" id="btnContinuarCatalogo">Continuar com esse catálogo</button>
+    </div>
+    <button class="btn btn-ghost" id="btnTrocarCatalogo">importar um catálogo novo</button>
+  </div>
+
+  <div class="card" id="cardImportar">
+    <h2>Importar catálogo de produtos</h2>
+    <p class="hint">Cole a lista exportada do sistema (código de barras, descrição — uma por linha) ou abra um arquivo .txt já salvo.</p>
+    <textarea id="txtCatalogo" placeholder="7891149200504, CERV SKOL 350&#10;7896052605262, CERV NOVA SCHIN LATA 269ML&#10;..."></textarea>
+    <div class="btn-row" style="margin-top:10px;">
+      <button class="btn btn-outline" id="btnAbrirArquivo">Abrir arquivo .txt</button>
+      <button class="btn btn-navy" id="btnCarregarCatalogo">Carregar catálogo</button>
+    </div>
+    <input type="file" id="inputArquivoCatalogo" accept=".txt,.csv" style="display:none;">
+    <div class="msg" id="msgCatalogo"></div>
+  </div>
+
+  <div class="card" id="cardResumoCatalogo" style="display:none;">
+    <h2>Catálogo pronto</h2>
+    <div id="resumoCatalogoTxt" class="hint"></div>
+    <div class="btn-row" style="margin-top:12px;">
+      <button class="btn btn-navy" id="btnIniciarContagem">Iniciar contagem</button>
+    </div>
+    <button class="btn btn-ghost" id="btnBaixarCatalogo">baixar catálogo limpo (.txt) pra compartilhar com os outros celulares</button>
+  </div>
+</section>
+
+<!-- ===================== TELA 2: CONTAGEM ===================== -->
+<section class="screen" id="tela-contagem">
+  <div class="seg">
+    <button class="active" data-modo="padrao">Padrão · 5 dígitos</button>
+    <button data-modo="exato">Código exato</button>
+  </div>
+
+  <div class="card">
+    <div class="mic-area">
+      <button class="mic-btn" id="btnMic">🎤</button>
+      <div class="mic-label" id="micLabel">Toque e fale o código</div>
+      <div class="mic-sub" id="micSub"></div>
+    </div>
+
+    <div class="msg" id="msgContagem"></div>
+
+    <div class="produto-card" id="produtoCard">
+      <div class="desc" id="produtoDesc"></div>
+      <div class="cod" id="produtoCod"></div>
+      <button class="btn btn-ghost cancelar" id="btnCancelarProduto">cancelar / trocar produto</button>
+    </div>
+
+    <div class="ambig-list" id="ambigList"></div>
+
+    <details class="manual-fallback">
+      <summary>digitar em vez de falar</summary>
+      <div class="row">
+        <input type="text" inputmode="numeric" id="inputManual" placeholder="código ou quantidade">
+        <button class="btn btn-outline" id="btnManualOk">OK</button>
+      </div>
+    </details>
+  </div>
+
+  <div class="lista-titulo">
+    <h2>Itens contados</h2>
+    <span id="totalListaTxt" class="hint"></span>
+  </div>
+  <div id="listaItens"></div>
+  <div class="empty-note" id="listaVazia">Nenhum item contado ainda.</div>
+
+  <div class="bottombar">
+    <div class="btn-row">
+      <button class="btn btn-outline" id="btnVoltarCatalogo">trocar catálogo</button>
+      <button class="btn btn-gold" id="btnFinalizar">Finalizar contagem</button>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== TELA 3: FINALIZAR ===================== -->
+<section class="screen" id="tela-fim">
+  <div class="card" style="text-align:center;">
+    <h2 style="margin-bottom:14px;">Contagem finalizada</h2>
+    <div class="resumo-grid">
+      <div><div class="resumo-num" id="fimItens">0</div><div class="lbl">itens diferentes</div></div>
+      <div><div class="resumo-num" id="fimUnidades">0</div><div class="lbl">unidades no total</div></div>
+    </div>
+    <input type="text" id="nomeArquivoFim" placeholder="nome do arquivo (ex: loja_pista)" style="margin-top:10px;">
+  </div>
+
+  <div class="btn-row" style="margin-bottom:10px;">
+    <button class="btn btn-navy" id="btnCompartilhar">Compartilhar (WhatsApp / e-mail / Drive)</button>
+  </div>
+  <div class="btn-row" style="margin-bottom:14px;">
+    <button class="btn btn-outline" id="btnBaixarContagem">Baixar arquivo .txt</button>
+  </div>
+
+  <button class="btn btn-ghost" id="btnVoltarContagem">voltar e revisar itens</button>
+  <button class="btn btn-ghost" id="btnNovaContagem">começar nova contagem (mesmo catálogo)</button>
+</section>
+
+<script>
+// ============================== CATÁLOGO ==============================
+
+function normalizarTexto(s) {
+  return String(s)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+function parseCatalogo(texto) {
+  const linhas = texto.split(/\r?\n/);
+  const produtos = [];
+  for (const linhaRaw of linhas) {
+    const linha = linhaRaw.trim();
+    if (!linha) continue;
+    const partes = linha.split(",");
+    if (partes.length < 2) continue;
+    const barcode = partes[0].trim();
+    const descricao = partes[1].trim();
+    if (!barcode || !descricao) continue;
+    if (!/^\d+$/.test(barcode)) continue;
+    produtos.push({ barcode, descricao });
+  }
+  return produtos;
+}
+
+function construirIndices(produtos) {
+  const porUltimos5 = new Map();
+  const porCodigoExato = new Map();
+  for (const p of produtos) {
+    const last5 = p.barcode.length >= 5 ? p.barcode.slice(-5) : p.barcode;
+    if (!porUltimos5.has(last5)) porUltimos5.set(last5, []);
+    porUltimos5.get(last5).push(p);
+
+    // código exato: mesmo produto também é indexado pelo código completo,
+    // pra permitir o modo "código exato" (produtos com código interno curto)
+    if (!porCodigoExato.has(p.barcode)) porCodigoExato.set(p.barcode, []);
+    porCodigoExato.get(p.barcode).push(p);
+  }
+  return { porUltimos5, porCodigoExato };
+}
+
+function buscarPorUltimos5(indices, digitos5) {
+  return indices.porUltimos5.get(digitos5) || [];
+}
+
+function buscarPorCodigoExato(indices, digitosCompletos) {
+  // remove zeros à esquerda só na comparação, mas mantém o texto original pro match exato primeiro
+  const direto = indices.porCodigoExato.get(digitosCompletos);
+  if (direto && direto.length) return direto;
+  const semZerosEsquerda = digitosCompletos.replace(/^0+/, "") || "0";
+  const encontrados = [];
+  for (const [cod, prods] of indices.porCodigoExato.entries()) {
+    if (cod.replace(/^0+/, "") === semZerosEsquerda) encontrados.push(...prods);
+  }
+  return encontrados;
+}
+
+// ============================== EXTRAÇÃO DE DÍGITOS (código falado) ==============================
+
+const MAPA_DIGITO_PALAVRA = {
+  zero: "0",
+  um: "1",
+  uma: "1",
+  dois: "2",
+  duas: "2",
+  tres: "3",
+  quatro: "4",
+  cinco: "5",
+  seis: "6",
+  meia: "6",
+  sete: "7",
+  oito: "8",
+  nove: "9",
+};
+
+function extrairDigitos(transcript) {
+  const digitosDiretos = transcript.replace(/[^0-9]/g, "");
+
+  const palavras = normalizarTexto(transcript).split(/\s+/);
+  let digitosPalavras = "";
+  for (const p of palavras) {
+    if (MAPA_DIGITO_PALAVRA[p] !== undefined) digitosPalavras += MAPA_DIGITO_PALAVRA[p];
+  }
+
+  // se as duas formas capturaram algo, prefere a mais longa (mais informação)
+  if (digitosDiretos.length >= digitosPalavras.length) return digitosDiretos;
+  return digitosPalavras;
+}
+
+function extrairUltimos5(transcript) {
+  const digitos = extrairDigitos(transcript);
+  if (digitos.length < 5) return null;
+  return digitos.slice(-5);
+}
+
+function extrairCodigoExato(transcript) {
+  const digitos = extrairDigitos(transcript);
+  if (!digitos.length) return null;
+  return digitos;
+}
+
+// ============================== EXTRAÇÃO DE QUANTIDADE (número por extenso) ==============================
+
+const UNIDADES_PT = {
+  zero: 0,
+  um: 1,
+  uma: 1,
+  dois: 2,
+  duas: 2,
+  tres: 3,
+  quatro: 4,
+  cinco: 5,
+  seis: 6,
+  sete: 7,
+  oito: 8,
+  nove: 9,
+  dez: 10,
+  onze: 11,
+  doze: 12,
+  treze: 13,
+  catorze: 14,
+  quatorze: 14,
+  quinze: 15,
+  dezesseis: 16,
+  dezessete: 17,
+  dezoito: 18,
+  dezenove: 19,
+};
+const DEZENAS_PT = {
+  vinte: 20,
+  trinta: 30,
+  quarenta: 40,
+  cinquenta: 50,
+  sessenta: 60,
+  setenta: 70,
+  oitenta: 80,
+  noventa: 90,
+};
+const CENTENAS_PT = {
+  cem: 100,
+  cento: 100,
+  duzentos: 200,
+  trezentos: 300,
+  quatrocentos: 400,
+  quinhentos: 500,
+  seiscentos: 600,
+  setecentos: 700,
+  oitocentos: 800,
+  novecentos: 900,
+};
+
+function parseQuantidade(transcript) {
+  const somenteDigitos = transcript.replace(/[^0-9]/g, "");
+  if (somenteDigitos.length > 0) {
+    const n = parseInt(somenteDigitos, 10);
+    if (!isNaN(n)) return n;
+  }
+
+  const palavras = normalizarTexto(transcript)
+    .replace(/-/g, " ")
+    .split(/\s+/)
+    .filter((p) => p && p !== "e");
+
+  let total = 0;
+  let achou = false;
+  for (const p of palavras) {
+    if (CENTENAS_PT[p] !== undefined) {
+      total += CENTENAS_PT[p];
+      achou = true;
+    } else if (DEZENAS_PT[p] !== undefined) {
+      total += DEZENAS_PT[p];
+      achou = true;
+    } else if (UNIDADES_PT[p] !== undefined) {
+      total += UNIDADES_PT[p];
+      achou = true;
+    }
+  }
+  return achou ? total : null;
+}
+
+// ============================== EXPORTAÇÃO ==============================
+
+function gerarTextoContagem(itensContados) {
+  return itensContados.map((c) => `${c.barcode}, ${c.quantidade}`).join("\n") + "\n";
+}
+
+if (typeof module !== "undefined") {
+  module.exports = {
+    normalizarTexto,
+    parseCatalogo,
+    construirIndices,
+    buscarPorUltimos5,
+    buscarPorCodigoExato,
+    extrairDigitos,
+    extrairUltimos5,
+    extrairCodigoExato,
+    parseQuantidade,
+    gerarTextoContagem,
+  };
+}
+
+</script>
+<script>
+(function () {
+  // ==================== estado global ====================
+  let catalogo = [];
+  let indices = { porUltimos5: new Map(), porCodigoExato: new Map() };
+  const contagemMap = new Map(); // barcode -> {barcode, descricao, quantidade}
+
+  let modo = "padrao"; // 'padrao' | 'exato'
+  let estado = "idle"; // idle | listening-code | produto-mostrado | listening-qtd | ambiguo
+  let produtoAtual = null;
+  let candidatosAmbiguos = [];
+
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+  // ==================== elementos ====================
+  const el = (id) => document.getElementById(id);
+  const telaCatalogo = el("tela-catalogo");
+  const telaContagem = el("tela-contagem");
+  const telaFim = el("tela-fim");
+
+  function mostrarTela(tela) {
+    [telaCatalogo, telaContagem, telaFim].forEach((s) => s.classList.remove("active"));
+    tela.classList.add("active");
+  }
+
+  function atualizarTopbarStats() {
+    const itens = contagemMap.size;
+    const unidades = Array.from(contagemMap.values()).reduce((s, c) => s + c.quantidade, 0);
+    el("statsTop").textContent = itens
+      ? `${itens} ${itens === 1 ? "item" : "itens"} · ${unidades} un.`
+      : "";
+  }
+
+  // ==================== persistência ====================
+  function salvarCatalogoLocal() {
+    try {
+      localStorage.setItem(
+        "nc_catalogo_v1",
+        JSON.stringify({ produtos: catalogo, salvoEm: new Date().toISOString() })
+      );
+    } catch (e) {}
+  }
+  function carregarCatalogoLocal() {
+    try {
+      const raw = localStorage.getItem("nc_catalogo_v1");
+      if (!raw) return null;
+      return JSON.parse(raw);
+    } catch (e) {
+      return null;
+    }
+  }
+  function salvarContagemLocal() {
+    try {
+      localStorage.setItem("nc_contagem_v1", JSON.stringify(Array.from(contagemMap.values())));
+    } catch (e) {}
+  }
+  function carregarContagemLocal() {
+    try {
+      const raw = localStorage.getItem("nc_contagem_v1");
+      if (!raw) return;
+      const arr = JSON.parse(raw);
+      arr.forEach((c) => contagemMap.set(c.barcode, c));
+    } catch (e) {}
+  }
+
+  // ==================== tela 1: catálogo ====================
+  function setCatalogo(produtos) {
+    catalogo = produtos;
+    indices = construirIndices(catalogo);
+    salvarCatalogoLocal();
+  }
+
+  function mostrarResumoCatalogo() {
+    el("cardResumoCatalogo").style.display = "";
+    el("resumoCatalogoTxt").textContent = `${catalogo.length} produtos carregados.`;
+  }
+
+  el("btnCarregarCatalogo").addEventListener("click", () => {
+    const texto = el("txtCatalogo").value;
+    const produtos = parseCatalogo(texto);
+    const msg = el("msgCatalogo");
+    if (!produtos.length) {
+      msg.textContent = "Não consegui reconhecer nenhum produto nesse texto. Confira o formato: código, descrição.";
+      msg.className = "msg show err";
+      return;
+    }
+    msg.className = "msg";
+    setCatalogo(produtos);
+    mostrarResumoCatalogo();
+  });
+
+  el("btnAbrirArquivo").addEventListener("click", () => el("inputArquivoCatalogo").click());
+  el("inputArquivoCatalogo").addEventListener("change", async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const texto = await file.text();
+    el("txtCatalogo").value = texto;
+  });
+
+  el("btnIniciarContagem").addEventListener("click", () => {
+    carregarContagemLocal();
+    renderLista();
+    atualizarTopbarStats();
+    mostrarTela(telaContagem);
+    resetEstadoContagem();
+  });
+
+  el("btnBaixarCatalogo").addEventListener("click", () => {
+    const txt = catalogo.map((p) => `${p.barcode}, ${p.descricao}`).join("\n") + "\n";
+    baixarArquivo(txt, "catalogo_newcount.txt");
+  });
+
+  el("btnTrocarCatalogo").addEventListener("click", () => {
+    el("cardCatalogoSalvo").style.display = "none";
+  });
+
+  el("btnContinuarCatalogo").addEventListener("click", () => {
+    const salvo = carregarCatalogoLocal();
+    if (salvo) {
+      setCatalogo(salvo.produtos);
+      mostrarResumoCatalogo();
+      el("cardCatalogoSalvo").style.display = "none";
+    }
+  });
+
+  (function initCatalogoSalvo() {
+    const salvo = carregarCatalogoLocal();
+    if (salvo && salvo.produtos && salvo.produtos.length) {
+      el("cardCatalogoSalvo").style.display = "";
+      const data = new Date(salvo.salvoEm);
+      el("infoCatalogoSalvo").textContent = `${salvo.produtos.length} produtos, importado em ${data.toLocaleDateString(
+        "pt-BR"
+      )} às ${data.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}.`;
+    }
+  })();
+
+  // ==================== tela 2: contagem — modo ====================
+  document.querySelectorAll(".seg button").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".seg button").forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      modo = btn.dataset.modo;
+      resetEstadoContagem();
+    });
+  });
+
+  function labelModoCodigo() {
+    return modo === "padrao" ? "Toque e fale os 5 últimos dígitos" : "Toque e fale o código completo";
+  }
+
+  function resetEstadoContagem() {
+    estado = "idle";
+    produtoAtual = null;
+    candidatosAmbiguos = [];
+    atualizarUIContagem();
+  }
+
+  // ==================== máquina de estados ====================
+  function mostrarMsg(texto, tipo) {
+    const msg = el("msgContagem");
+    msg.textContent = texto;
+    msg.className = "msg show " + (tipo || "");
+  }
+  function limparMsg() {
+    el("msgContagem").className = "msg";
+  }
+
+  function atualizarUIContagem() {
+    const micBtn = el("btnMic");
+    const micLabel = el("micLabel");
+    const micSub = el("micSub");
+    const produtoCard = el("produtoCard");
+    const ambigList = el("ambigList");
+
+    micBtn.classList.toggle("listening", estado === "listening-code" || estado === "listening-qtd");
+    produtoCard.classList.toggle("show", estado === "produto-mostrado" || estado === "listening-qtd");
+    ambigList.classList.toggle("show", estado === "ambiguo");
+
+    if (estado === "idle") {
+      micLabel.textContent = labelModoCodigo();
+      micSub.textContent = "";
+    } else if (estado === "listening-code") {
+      micLabel.textContent = "Ouvindo…";
+      micSub.textContent = "fale o código agora";
+    } else if (estado === "produto-mostrado") {
+      micLabel.textContent = "Toque e fale a quantidade";
+      micSub.textContent = "";
+    } else if (estado === "listening-qtd") {
+      micLabel.textContent = "Ouvindo…";
+      micSub.textContent = "fale a quantidade contada";
+    } else if (estado === "ambiguo") {
+      micLabel.textContent = "Mais de um produto encontrado";
+      micSub.textContent = "toque no produto certo abaixo";
+    }
+
+    if (estado === "produto-mostrado" || estado === "listening-qtd") {
+      el("produtoDesc").textContent = produtoAtual.descricao;
+      el("produtoCod").textContent = "cód. " + produtoAtual.barcode;
+    }
+
+    if (estado === "ambiguo") {
+      ambigList.innerHTML = "";
+      candidatosAmbiguos.forEach((p) => {
+        const div = document.createElement("div");
+        div.className = "ambig-item";
+        div.innerHTML =
+          '<div class="desc"></div><div class="cod"></div>';
+        div.querySelector(".desc").textContent = p.descricao;
+        div.querySelector(".cod").textContent = "cód. " + p.barcode;
+        div.addEventListener("click", () => selecionarProduto(p));
+        ambigList.appendChild(div);
+      });
+    }
+  }
+
+  function iniciarEscutaCodigo() {
+    if (!SR) {
+      mostrarMsg("Reconhecimento de voz não disponível neste navegador.", "err");
+      return;
+    }
+    limparMsg();
+    estado = "listening-code";
+    atualizarUIContagem();
+    const r = new SR();
+    r.lang = "pt-BR";
+    r.interimResults = false;
+    r.maxAlternatives = 1;
+    r.onresult = (e) => processarCodigoFalado(e.results[0][0].transcript);
+    r.onerror = (e) => {
+      estado = "idle";
+      mostrarMsg(
+        e.error === "not-allowed"
+          ? "Sem permissão de microfone. Confira as permissões do site no navegador."
+          : "Erro no microfone: " + e.error,
+        "err"
+      );
+      atualizarUIContagem();
+    };
+    r.onend = () => {
+      if (estado === "listening-code") {
+        estado = "idle";
+        atualizarUIContagem();
+      }
+    };
+    try {
+      r.start();
+    } catch (err) {
+      estado = "idle";
+      atualizarUIContagem();
+    }
+  }
+
+  function iniciarEscutaQuantidade() {
+    if (!SR) return;
+    estado = "listening-qtd";
+    atualizarUIContagem();
+    const r = new SR();
+    r.lang = "pt-BR";
+    r.interimResults = false;
+    r.maxAlternatives = 1;
+    r.onresult = (e) => processarQuantidadeFalada(e.results[0][0].transcript);
+    r.onerror = (e) => {
+      estado = "produto-mostrado";
+      mostrarMsg(
+        e.error === "not-allowed" ? "Sem permissão de microfone." : "Erro no microfone: " + e.error,
+        "err"
+      );
+      atualizarUIContagem();
+    };
+    r.onend = () => {
+      if (estado === "listening-qtd") {
+        estado = "produto-mostrado";
+        atualizarUIContagem();
+      }
+    };
+    try {
+      r.start();
+    } catch (err) {
+      estado = "produto-mostrado";
+      atualizarUIContagem();
+    }
+  }
+
+  function processarCodigoFalado(texto) {
+    let codigoExtraido, candidatos;
+    if (modo === "padrao") {
+      codigoExtraido = extrairUltimos5(texto);
+      if (!codigoExtraido) {
+        estado = "idle";
+        mostrarMsg('Não entendi um código de 5 dígitos em "' + texto + '". Tente de novo.', "err");
+        atualizarUIContagem();
+        return;
+      }
+      candidatos = buscarPorUltimos5(indices, codigoExtraido);
+    } else {
+      codigoExtraido = extrairCodigoExato(texto);
+      if (!codigoExtraido) {
+        estado = "idle";
+        mostrarMsg('Não entendi um código em "' + texto + '". Tente de novo.', "err");
+        atualizarUIContagem();
+        return;
+      }
+      candidatos = buscarPorCodigoExato(indices, codigoExtraido);
+    }
+    tratarCandidatos(candidatos, codigoExtraido);
+  }
+
+  function tratarCandidatos(candidatos, codigoExtraido) {
+    limparMsg();
+    if (!candidatos.length) {
+      estado = "idle";
+      mostrarMsg('Código "' + codigoExtraido + '" não encontrado no catálogo.', "err");
+      atualizarUIContagem();
+    } else if (candidatos.length === 1) {
+      selecionarProduto(candidatos[0]);
+    } else {
+      candidatosAmbiguos = candidatos;
+      estado = "ambiguo";
+      atualizarUIContagem();
+    }
+  }
+
+  function selecionarProduto(produto) {
+    produtoAtual = produto;
+    estado = "produto-mostrado";
+    atualizarUIContagem();
+    setTimeout(() => {
+      if (estado === "produto-mostrado") iniciarEscutaQuantidade();
+    }, 350);
+  }
+
+  function processarQuantidadeFalada(texto) {
+    const qtd = parseQuantidade(texto);
+    if (qtd === null || qtd < 0) {
+      estado = "produto-mostrado";
+      mostrarMsg('Não entendi a quantidade em "' + texto + '". Tente de novo.', "err");
+      atualizarUIContagem();
+      return;
+    }
+    registrarContagem(produtoAtual, qtd);
+    tocarBip();
+    produtoAtual = null;
+    estado = "idle";
+    limparMsg();
+    atualizarUIContagem();
+  }
+
+  function registrarContagem(produto, qtd) {
+    const existente = contagemMap.get(produto.barcode);
+    if (existente) existente.quantidade += qtd;
+    else contagemMap.set(produto.barcode, { barcode: produto.barcode, descricao: produto.descricao, quantidade: qtd });
+    salvarContagemLocal();
+    renderLista();
+    atualizarTopbarStats();
+  }
+
+  el("btnMic").addEventListener("click", () => {
+    if (estado === "idle") iniciarEscutaCodigo();
+    else if (estado === "produto-mostrado") iniciarEscutaQuantidade();
+  });
+
+  el("btnCancelarProduto").addEventListener("click", () => {
+    resetEstadoContagem();
+    limparMsg();
+  });
+
+  // ------ fallback manual ------
+  function aguardandoQuantidade() {
+    return estado === "produto-mostrado" || estado === "listening-qtd";
+  }
+  el("btnManualOk").addEventListener("click", submeterManual);
+  el("inputManual").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") submeterManual();
+  });
+  function submeterManual() {
+    const input = el("inputManual");
+    const texto = input.value.trim();
+    if (!texto) return;
+    if (aguardandoQuantidade()) processarQuantidadeFalada(texto);
+    else processarCodigoFalado(texto);
+    input.value = "";
+  }
+
+  // ------ som de confirmação ------
+  function tocarBip() {
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      const ctx = new AC();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.frequency.value = 880;
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      gain.gain.setValueAtTime(0.2, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.12);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.13);
+    } catch (e) {}
+  }
+
+  // ==================== lista de itens contados ====================
+  function renderLista() {
+    const container = el("listaItens");
+    const vazio = el("listaVazia");
+    const itens = Array.from(contagemMap.values());
+    el("totalListaTxt").textContent = itens.length
+      ? itens.length + " itens · " + itens.reduce((s, c) => s + c.quantidade, 0) + " unidades"
+      : "";
+    vazio.style.display = itens.length ? "none" : "";
+    container.innerHTML = "";
+    itens.forEach((item) => {
+      const row = document.createElement("div");
+      row.className = "item-row";
+      row.innerHTML = `
+        <div class="info">
+          <div class="desc"></div>
+          <div class="cod"></div>
+        </div>
+        <input class="qtd" type="number" inputmode="numeric" min="0">
+        <button class="del" title="remover">✕</button>
+      `;
+      row.querySelector(".desc").textContent = item.descricao;
+      row.querySelector(".cod").textContent = item.barcode;
+      const qtdInput = row.querySelector(".qtd");
+      qtdInput.value = item.quantidade;
+      qtdInput.addEventListener("change", () => {
+        const v = parseInt(qtdInput.value, 10);
+        item.quantidade = isNaN(v) || v < 0 ? 0 : v;
+        qtdInput.value = item.quantidade;
+        salvarContagemLocal();
+        renderLista();
+        atualizarTopbarStats();
+      });
+      row.querySelector(".del").addEventListener("click", () => {
+        contagemMap.delete(item.barcode);
+        salvarContagemLocal();
+        renderLista();
+        atualizarTopbarStats();
+      });
+      container.appendChild(row);
+    });
+  }
+
+  // ==================== navegação entre telas ====================
+  el("btnVoltarCatalogo").addEventListener("click", () => mostrarTela(telaCatalogo));
+
+  el("btnFinalizar").addEventListener("click", () => {
+    const itens = Array.from(contagemMap.values());
+    el("fimItens").textContent = itens.length;
+    el("fimUnidades").textContent = itens.reduce((s, c) => s + c.quantidade, 0);
+    mostrarTela(telaFim);
+  });
+  el("btnVoltarContagem").addEventListener("click", () => mostrarTela(telaContagem));
+  el("btnNovaContagem").addEventListener("click", () => {
+    if (!confirm("Isso apaga a lista de itens contados (o catálogo continua salvo). Confirma?")) return;
+    contagemMap.clear();
+    salvarContagemLocal();
+    renderLista();
+    atualizarTopbarStats();
+    resetEstadoContagem();
+    mostrarTela(telaContagem);
+  });
+
+  // ==================== exportação ====================
+  function nomeArquivoFinal() {
+    const base = (el("nomeArquivoFim").value || "contagem").trim().replace(/[^\w\-]+/g, "_");
+    const d = new Date();
+    const carimbo =
+      String(d.getDate()).padStart(2, "0") +
+      "-" +
+      String(d.getMonth() + 1).padStart(2, "0") +
+      "-" +
+      d.getFullYear();
+    return `${base}_${carimbo}.txt`;
+  }
+
+  function baixarArquivo(texto, nome) {
+    const blob = new Blob([texto], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = nome;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+    return blob;
+  }
+
+  el("btnBaixarContagem").addEventListener("click", () => {
+    const texto = gerarTextoContagem(Array.from(contagemMap.values()));
+    baixarArquivo(texto, nomeArquivoFinal());
+  });
+
+  el("btnCompartilhar").addEventListener("click", async () => {
+    const texto = gerarTextoContagem(Array.from(contagemMap.values()));
+    const nome = nomeArquivoFinal();
+    const blob = new Blob([texto], { type: "text/plain;charset=utf-8" });
+    const file = new File([blob], nome, { type: "text/plain" });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try {
+        await navigator.share({ files: [file], title: nome });
+        return;
+      } catch (e) {
+        // usuário cancelou ou falhou — cai no fallback abaixo
+      }
+    }
+    baixarArquivo(texto, nome);
+    mostrarMsgFim();
+  });
+
+  function mostrarMsgFim() {
+    alert("Arquivo baixado. Agora é só anexar ele no WhatsApp, e-mail ou Drive.");
+  }
+
+  // estado inicial
+  resetEstadoContagem();
+})();
+
+</script>
+</body>
+</html>
