@@ -818,128 +818,110 @@ if (typeof module !== "undefined") {
 
   // sessão única e contínua: escuta o código e, sem precisar tocar de novo,
   // já continua escutando a quantidade assim que o produto é reconhecido
-  function iniciarSessaoVoz() {
+  // motor único de escuta: cuida tanto do código quanto da quantidade.
+  // em vez de depender do modo "contínuo" do navegador (que no Android
+  // encerra sozinho após a primeira fala), ele reinicia uma nova sessão
+  // de reconhecimento automaticamente quando precisa continuar ouvindo —
+  // funciona igual em computador e celular.
+  function iniciarEscutaFase(fase, produtoParaQtd) {
     if (!SR) {
       mostrarMsg("Reconhecimento de voz não disponível neste navegador.", "err");
       return;
     }
     pararRecognitionAtivo();
-    limparMsg();
-    estado = "listening-code";
+    if (fase === "codigo") {
+      limparMsg();
+      estado = "listening-code";
+    } else {
+      produtoAtual = produtoParaQtd;
+      estado = "listening-qtd";
+    }
     atualizarUIContagem();
 
     const r = new SR();
     recognitionAtivo = r;
     r.lang = "pt-BR";
-    r.continuous = true;
     r.interimResults = false;
     r.maxAlternatives = 1;
-    let fase = "codigo";
+    let continuando = false;
 
     r.onresult = (e) => {
-      for (let i = e.resultIndex; i < e.results.length; i++) {
-        if (!e.results[i].isFinal) continue;
-        const texto = e.results[i][0].transcript;
+      const texto = e.results[e.results.length - 1][0].transcript;
 
-        if (fase === "codigo") {
-          const resultado = resolverCodigoFalado(texto);
-          if (resultado.tipo === "unico") {
-            limparMsg();
-            produtoAtual = resultado.produto;
-            fase = "quantidade";
-            estado = "listening-qtd";
-            atualizarUIContagem();
-          } else if (resultado.tipo === "ambiguo") {
-            candidatosAmbiguos = resultado.lista;
-            estado = "ambiguo";
-            atualizarUIContagem();
-            pararRecognitionAtivo();
-          } else if (resultado.tipo === "nao-encontrado") {
-            estado = "idle";
-            mostrarMsg('Código "' + resultado.codigoExtraido + '" não encontrado no catálogo.', "err");
-            atualizarUIContagem();
-            pararRecognitionAtivo();
-          } else {
-            mostrarMsg('Não entendi um código em "' + texto + '". Fale de novo.', "err");
-          }
-        } else if (fase === "quantidade") {
-          if (processarTranscricaoQuantidade(texto)) pararRecognitionAtivo();
+      if (fase === "codigo") {
+        const resultado = resolverCodigoFalado(texto);
+        if (resultado.tipo === "unico") {
+          continuando = true;
+          produtoAtual = resultado.produto;
+          estado = "produto-mostrado";
+          atualizarUIContagem();
+          setTimeout(() => iniciarEscutaFase("quantidade", resultado.produto), 250);
+        } else if (resultado.tipo === "ambiguo") {
+          continuando = true;
+          candidatosAmbiguos = resultado.lista;
+          estado = "ambiguo";
+          atualizarUIContagem();
+        } else if (resultado.tipo === "nao-encontrado") {
+          continuando = true;
+          estado = "idle";
+          mostrarMsg('Código "' + resultado.codigoExtraido + '" não encontrado no catálogo.', "err");
+          atualizarUIContagem();
+        } else {
+          continuando = true;
+          mostrarMsg('Não entendi um código em "' + texto + '". Fale de novo.', "err");
+          estado = "listening-code";
+          setTimeout(() => iniciarEscutaFase("codigo"), 250);
+        }
+      } else {
+        if (processarTranscricaoQuantidade(texto)) {
+          continuando = true;
+        } else {
+          continuando = true;
+          estado = "listening-qtd";
+          setTimeout(() => iniciarEscutaFase("quantidade", produtoAtual), 250);
         }
       }
     };
 
     r.onerror = (e) => {
-      estado = fase === "quantidade" ? "produto-mostrado" : "idle";
+      recognitionAtivo = null;
+      if (continuando) return;
+      estado = fase === "codigo" ? "idle" : "produto-mostrado";
       mostrarMsg(
         e.error === "not-allowed"
           ? "Sem permissão de microfone. Confira as permissões do site no navegador."
+          : e.error === "no-speech"
+          ? "Não ouvi nada. Toque no microfone pra tentar de novo."
           : "Erro no microfone: " + e.error,
         "err"
       );
       atualizarUIContagem();
-      recognitionAtivo = null;
     };
+
     r.onend = () => {
       recognitionAtivo = null;
-      if (estado === "listening-code") {
-        estado = "idle";
-        atualizarUIContagem();
-      } else if (estado === "listening-qtd") {
-        estado = "produto-mostrado";
-        atualizarUIContagem();
-      }
+      if (continuando) return;
+      estado = fase === "codigo" ? "idle" : "produto-mostrado";
+      atualizarUIContagem();
     };
+
     try {
       r.start();
     } catch (err) {
-      estado = "idle";
+      recognitionAtivo = null;
+      estado = fase === "codigo" ? "idle" : "produto-mostrado";
       atualizarUIContagem();
     }
+  }
+
+  function iniciarSessaoVoz() {
+    iniciarEscutaFase("codigo");
   }
 
   // sessão só de quantidade (usada após escolher o produto na lista de
   // ambíguos ou na busca por texto — o código já foi resolvido por toque)
   function iniciarSessaoSoQuantidade(produto) {
-    produtoAtual = produto;
-    estado = "listening-qtd";
-    atualizarUIContagem();
-    if (!SR) return;
-    pararRecognitionAtivo();
-    const r = new SR();
-    recognitionAtivo = r;
-    r.lang = "pt-BR";
-    r.continuous = true;
-    r.interimResults = false;
-    r.maxAlternatives = 1;
-
-    r.onresult = (e) => {
-      for (let i = e.resultIndex; i < e.results.length; i++) {
-        if (!e.results[i].isFinal) continue;
-        if (processarTranscricaoQuantidade(e.results[i][0].transcript)) pararRecognitionAtivo();
-      }
-    };
-    r.onerror = (e) => {
-      estado = "produto-mostrado";
-      mostrarMsg(
-        e.error === "not-allowed" ? "Sem permissão de microfone." : "Erro no microfone: " + e.error,
-        "err"
-      );
-      atualizarUIContagem();
-      recognitionAtivo = null;
-    };
-    r.onend = () => {
-      recognitionAtivo = null;
-      if (estado === "listening-qtd") {
-        estado = "produto-mostrado";
-        atualizarUIContagem();
-      }
-    };
-    try {
-      r.start();
-    } catch (err) {
-      estado = "produto-mostrado";
-      atualizarUIContagem();
-    }
+    iniciarEscutaFase("quantidade", produto);
   }
 
   function selecionarProduto(produto) {
