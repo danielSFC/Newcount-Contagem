@@ -136,10 +136,20 @@ textarea { min-height: 120px; }
   background: rgba(0,0,0,0.55); color: #fff; border: none; border-radius: 20px;
   padding: 10px 18px; font-size: 14px; font-weight: 600; z-index: 2;
 }
-.scanner-hint {
-  position: absolute; bottom: calc(32px + env(safe-area-inset-bottom, 0px)); left: 0; right: 0;
-  text-align: center; color: #fff; font-size: 13.5px; z-index: 2; padding: 0 20px;
+.scanner-bottom {
+  position: absolute; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); left: 0; right: 0;
+  z-index: 2; padding: 0 20px; display: flex; flex-direction: column; align-items: center; gap: 10px;
 }
+.scanner-hint { text-align: center; color: #fff; font-size: 13.5px; }
+.scanner-bottom .btn { width: auto; background: rgba(255,255,255,0.15); color: #fff; border-color: rgba(255,255,255,0.6); font-size: 13px; padding: 9px 14px; }
+.scanner-ocr-box { width: 100%; max-width: 320px; text-align: center; }
+.scanner-ocr-status { color: #fff; font-size: 13px; margin-bottom: 8px; }
+.scanner-ocr-row { display: flex; gap: 8px; }
+.scanner-ocr-row input {
+  flex: 1; font-size: 16px; text-align: center; letter-spacing: 1px;
+  border: none; border-radius: 8px; padding: 10px;
+}
+.scanner-ocr-row .btn { width: auto; padding: 10px 16px; }
 .scanner-msg {
   position: absolute; top: 50%; left: 20px; right: 20px; transform: translateY(-50%);
   text-align: center; color: #fff; background: rgba(179,64,47,0.9); border-radius: 8px;
@@ -230,7 +240,17 @@ textarea { min-height: 120px; }
   <video id="scannerVideo" autoplay playsinline muted></video>
   <button class="scanner-close" id="btnFecharScanner">✕ Fechar</button>
   <div class="scanner-frame"></div>
-  <div class="scanner-hint">Aponte a câmera para o código de barras</div>
+  <div class="scanner-bottom">
+    <div class="scanner-hint">Aponte a câmera para o código de barras</div>
+    <button class="btn btn-outline" id="btnTentarOcr">🔢 Não achou? Ler o número escrito</button>
+    <div class="scanner-ocr-box" id="scannerOcrBox" style="display:none;">
+      <div id="scannerOcrStatus" class="scanner-ocr-status"></div>
+      <div class="scanner-ocr-row" id="scannerOcrRow" style="display:none;">
+        <input type="text" inputmode="numeric" id="inputOcrCodigo">
+        <button class="btn btn-gold" id="btnOcrConfirmar">Usar</button>
+      </div>
+    </div>
+  </div>
   <div class="scanner-msg" id="scannerMsg"></div>
 </div>
 
@@ -1025,6 +1045,8 @@ if (typeof module !== "undefined") {
   // ------ leitura de código de barras pela câmera ------
   let scannerStream = null;
   let scannerRAF = null;
+  let ocrEmAndamento = false;
+  let tesseractWorker = null;
 
   function suportaScanner() {
     return "BarcodeDetector" in window;
@@ -1096,6 +1118,11 @@ if (typeof module !== "undefined") {
     const frameEl = overlay.querySelector(".scanner-frame");
     const msgEl = el("scannerMsg");
     msgEl.classList.remove("show");
+    el("scannerOcrBox").style.display = "none";
+    el("scannerOcrRow").style.display = "none";
+    el("scannerOcrStatus").textContent = "";
+    el("inputOcrCodigo").value = "";
+    ocrEmAndamento = false;
     overlay.style.display = "flex";
 
     try {
@@ -1133,7 +1160,7 @@ if (typeof module !== "undefined") {
     let leiturasIguaisSeguidas = 0;
 
     const tentarLeitura = async () => {
-      if (!scannerStream) return;
+      if (!scannerStream || ocrEmAndamento) return;
 
       const regiao = calcularRegiaoDeteccao(video, frameEl);
       let alvoDeteccao = video;
@@ -1200,10 +1227,116 @@ if (typeof module !== "undefined") {
       scannerStream = null;
     }
     el("scannerOverlay").style.display = "none";
+    ocrEmAndamento = false;
+    el("scannerOcrBox").style.display = "none";
+    el("scannerOcrRow").style.display = "none";
+    el("scannerOcrStatus").textContent = "";
+    el("inputOcrCodigo").value = "";
   }
 
   el("btnAbrirScanner").addEventListener("click", abrirScanner);
   el("btnFecharScanner").addEventListener("click", fecharScanner);
+
+  // ------ leitura do número escrito embaixo do código (último recurso) ------
+  async function garantirTesseractCarregado() {
+    if (window.Tesseract) return true;
+    try {
+      await new Promise((resolve, reject) => {
+        const script = document.createElement("script");
+        script.src = "https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js";
+        script.onload = resolve;
+        script.onerror = reject;
+        document.head.appendChild(script);
+      });
+    } catch (e) {
+      return false;
+    }
+    return !!window.Tesseract;
+  }
+
+  el("btnTentarOcr").addEventListener("click", async () => {
+    const statusEl = el("scannerOcrStatus");
+    const rowEl = el("scannerOcrRow");
+    const boxEl = el("scannerOcrBox");
+    boxEl.style.display = "block";
+    rowEl.style.display = "none";
+    ocrEmAndamento = true;
+    statusEl.textContent = "Carregando leitor de número (só na primeira vez)…";
+
+    const carregou = await garantirTesseractCarregado();
+    if (!carregou) {
+      statusEl.textContent = "Não consegui carregar o leitor de número. Confira sua internet e tenta de novo.";
+      ocrEmAndamento = false;
+      return;
+    }
+
+    statusEl.textContent = "Lendo o número…";
+
+    try {
+      if (!tesseractWorker) {
+        tesseractWorker = await window.Tesseract.createWorker("eng");
+        await tesseractWorker.setParameters({ tessedit_char_whitelist: "0123456789" });
+      }
+
+      const video = el("scannerVideo");
+      const frameEl = document.querySelector(".scanner-frame");
+      const regiao = calcularRegiaoDeteccao(video, frameEl);
+      const canvasOcr = document.createElement("canvas");
+      const ctxOcr = canvasOcr.getContext("2d");
+      if (regiao) {
+        canvasOcr.width = regiao.width;
+        canvasOcr.height = regiao.height;
+        ctxOcr.drawImage(
+          video,
+          regiao.x,
+          regiao.y,
+          regiao.width,
+          regiao.height,
+          0,
+          0,
+          regiao.width,
+          regiao.height
+        );
+      } else {
+        canvasOcr.width = video.videoWidth;
+        canvasOcr.height = video.videoHeight;
+        ctxOcr.drawImage(video, 0, 0);
+      }
+
+      const resultado = await tesseractWorker.recognize(canvasOcr);
+      const textoBruto = resultado && resultado.data ? resultado.data.text : "";
+      const digitos = (textoBruto || "").replace(/[^0-9]/g, "");
+
+      if (digitos.length >= 6) {
+        el("inputOcrCodigo").value = digitos;
+        statusEl.textContent = "Confira o número lido (corrija se precisar) e toque em Usar:";
+        rowEl.style.display = "flex";
+      } else {
+        statusEl.textContent = "Não consegui ler o número. Aproxime mais e com boa luz, aí toca de novo.";
+      }
+    } catch (e) {
+      statusEl.textContent = "Erro ao tentar ler o número.";
+    }
+    ocrEmAndamento = false;
+  });
+
+  el("btnOcrConfirmar").addEventListener("click", () => {
+    const valor = el("inputOcrCodigo").value.trim();
+    if (!valor) return;
+    fecharScanner();
+    const resultado = resolverCodigoEscaneado(valor);
+    if (resultado.tipo === "unico") {
+      selecionarProduto(resultado.produto);
+    } else if (resultado.tipo === "ambiguo") {
+      candidatosAmbiguos = resultado.lista;
+      estado = "ambiguo";
+      atualizarUIContagem();
+    } else {
+      estado = "idle";
+      mostrarMsg('Código "' + valor + '" não encontrado no catálogo.', "err");
+      atualizarUIContagem();
+    }
+  });
 
   // ------ digitar a quantidade direto no card do produto encontrado ------
   el("btnQtdManualOk").addEventListener("click", confirmarQtdManualCard);
