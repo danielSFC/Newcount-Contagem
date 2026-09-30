@@ -1042,6 +1042,44 @@ if (typeof module !== "undefined") {
     return { tipo: "ambiguo", lista: candidatos };
   }
 
+  function calcularRegiaoDeteccao(video, frameEl) {
+    const videoRect = video.getBoundingClientRect();
+    const frameRect = frameEl.getBoundingClientRect();
+    const vw = video.videoWidth;
+    const vh = video.videoHeight;
+    const cw = videoRect.width;
+    const ch = videoRect.height;
+    if (!vw || !vh || !cw || !ch) return null;
+
+    // object-fit: cover -> o vídeo é escalado até cobrir o contêiner
+    // inteiro, cortando o excesso; precisamos desfazer essa conta pra
+    // achar, em pixels reais do vídeo, a área que corresponde à moldura
+    // visível na tela.
+    const scale = Math.max(cw / vw, ch / vh);
+    const offsetX = (cw - vw * scale) / 2;
+    const offsetY = (ch - vh * scale) / 2;
+
+    const cx0 = frameRect.left - videoRect.left;
+    const cy0 = frameRect.top - videoRect.top;
+    const cx1 = frameRect.right - videoRect.left;
+    const cy1 = frameRect.bottom - videoRect.top;
+
+    let x0 = (cx0 - offsetX) / scale;
+    let y0 = (cy0 - offsetY) / scale;
+    let x1 = (cx1 - offsetX) / scale;
+    let y1 = (cy1 - offsetY) / scale;
+
+    x0 = Math.max(0, Math.min(vw, x0));
+    y0 = Math.max(0, Math.min(vh, y0));
+    x1 = Math.max(0, Math.min(vw, x1));
+    y1 = Math.max(0, Math.min(vh, y1));
+
+    const largura = x1 - x0;
+    const altura = y1 - y0;
+    if (largura <= 0 || altura <= 0) return null;
+    return { x: x0, y: y0, width: largura, height: altura };
+  }
+
   async function abrirScanner() {
     if (!suportaScanner()) {
       mostrarMsg(
@@ -1055,6 +1093,7 @@ if (typeof module !== "undefined") {
 
     const overlay = el("scannerOverlay");
     const video = el("scannerVideo");
+    const frameEl = overlay.querySelector(".scanner-frame");
     const msgEl = el("scannerMsg");
     msgEl.classList.remove("show");
     overlay.style.display = "flex";
@@ -1086,37 +1125,75 @@ if (typeof module !== "undefined") {
       return;
     }
 
-    const loop = async () => {
+    const canvasScan = document.createElement("canvas");
+    const ctxScan = canvasScan.getContext("2d");
+    const INTERVALO_MS = 260; // ritmo das tentativas - rápido demais causa leitura errada
+    const LEITURAS_NECESSARIAS = 2; // só aceita depois de ler o MESMO código 2x seguidas
+    let ultimoValor = null;
+    let leiturasIguaisSeguidas = 0;
+
+    const tentarLeitura = async () => {
       if (!scannerStream) return;
+
+      const regiao = calcularRegiaoDeteccao(video, frameEl);
+      let alvoDeteccao = video;
+      if (regiao) {
+        canvasScan.width = regiao.width;
+        canvasScan.height = regiao.height;
+        ctxScan.drawImage(
+          video,
+          regiao.x,
+          regiao.y,
+          regiao.width,
+          regiao.height,
+          0,
+          0,
+          regiao.width,
+          regiao.height
+        );
+        alvoDeteccao = canvasScan;
+      }
+
       try {
-        const codigos = await detector.detect(video);
+        const codigos = await detector.detect(alvoDeteccao);
         if (codigos && codigos.length && codigos[0].rawValue) {
           const valor = codigos[0].rawValue.trim();
-          fecharScanner();
-          const resultado = resolverCodigoEscaneado(valor);
-          if (resultado.tipo === "unico") {
-            selecionarProduto(resultado.produto);
-          } else if (resultado.tipo === "ambiguo") {
-            candidatosAmbiguos = resultado.lista;
-            estado = "ambiguo";
-            atualizarUIContagem();
+          if (valor === ultimoValor) {
+            leiturasIguaisSeguidas++;
           } else {
-            estado = "idle";
-            mostrarMsg('Código "' + valor + '" não encontrado no catálogo.', "err");
-            atualizarUIContagem();
+            ultimoValor = valor;
+            leiturasIguaisSeguidas = 1;
           }
-          return;
+          if (leiturasIguaisSeguidas >= LEITURAS_NECESSARIAS) {
+            fecharScanner();
+            const resultado = resolverCodigoEscaneado(valor);
+            if (resultado.tipo === "unico") {
+              selecionarProduto(resultado.produto);
+            } else if (resultado.tipo === "ambiguo") {
+              candidatosAmbiguos = resultado.lista;
+              estado = "ambiguo";
+              atualizarUIContagem();
+            } else {
+              estado = "idle";
+              mostrarMsg('Código "' + valor + '" não encontrado no catálogo.', "err");
+              atualizarUIContagem();
+            }
+            return;
+          }
+        } else {
+          ultimoValor = null;
+          leiturasIguaisSeguidas = 0;
         }
       } catch (e) {
-        // erro pontual num frame - ignora e tenta o próximo
+        // erro pontual num frame - ignora e tenta de novo
       }
-      scannerRAF = requestAnimationFrame(loop);
+      scannerRAF = setTimeout(tentarLeitura, INTERVALO_MS);
     };
-    scannerRAF = requestAnimationFrame(loop);
+    scannerRAF = setTimeout(tentarLeitura, INTERVALO_MS);
   }
 
   function fecharScanner() {
-    if (scannerRAF) cancelAnimationFrame(scannerRAF);
+    if (scannerRAF) clearTimeout(scannerRAF);
     scannerRAF = null;
     if (scannerStream) {
       scannerStream.getTracks().forEach((t) => t.stop());
