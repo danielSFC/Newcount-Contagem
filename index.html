@@ -129,6 +129,11 @@ textarea { min-height: 120px; }
 .seg button.active { background: var(--navy); color: #fff; }
 
 .mic-area { text-align: center; padding: 18px 10px 6px; }
+.posto-badge {
+  position: absolute; top: 10px; right: 14px; max-width: 48%;
+  font-size: 10.5px; color: var(--muted); text-align: right; line-height: 1.3;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 .mic-row { display: flex; align-items: center; justify-content: center; gap: 16px; }
 .mic-btn {
   width: 108px; height: 108px; border-radius: 50%;
@@ -227,6 +232,10 @@ textarea { min-height: 120px; }
 .item-row .info { flex: 1; min-width: 0; }
 .item-row .desc { font-size: 13.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .item-row .cod { font-size: 12.5px; color: var(--muted); }
+.item-row .historico {
+  flex: none; max-width: 92px; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; font-size: 10.5px; color: var(--muted); text-align: right;
+}
 .item-row .qtd {
   font-family: 'Source Serif 4', serif; font-weight: 700; font-size: 18px;
   border: 1px solid var(--line); border-radius: 6px; width: 52px; text-align: center;
@@ -354,6 +363,9 @@ textarea { min-height: 120px; }
   <div class="card" id="cardResumoCatalogo" style="display:none;">
     <h2>Catálogo pronto</h2>
     <div id="resumoCatalogoTxt" class="hint"></div>
+    <label for="inputNomePosto" style="display:block; font-size:12.5px; font-weight:600; margin-top:14px;">Nome do posto *</label>
+    <input type="text" id="inputNomePosto" placeholder="ex: Bella Luna" style="margin-top:6px;">
+    <div class="hint" id="avisoNomePosto" style="display:none; color:var(--red); margin-top:6px;">Preencha o nome do posto pra continuar.</div>
     <div class="btn-row" style="margin-top:12px;">
       <button class="btn btn-navy" id="btnIniciarContagem">Iniciar contagem</button>
     </div>
@@ -368,7 +380,8 @@ textarea { min-height: 120px; }
     <button data-modo="exato">Código exato</button>
   </div>
 
-  <div class="card">
+  <div class="card" style="position:relative;">
+    <div class="posto-badge" id="postoBadge"></div>
     <div class="mic-area">
       <div class="mic-row">
         <button class="mic-btn" id="btnMic">🎤</button>
@@ -728,6 +741,8 @@ if (typeof module !== "undefined") {
   let candidatosAmbiguos = [];
   let recognitionAtivo = null;
   let filtroLista = "";
+  let nomePostoAtual = "";
+  let tituloSessaoAtual = "";
 
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 
@@ -773,13 +788,42 @@ if (typeof module !== "undefined") {
       localStorage.setItem("nc_contagem_v1", JSON.stringify(Array.from(contagemMap.values())));
     } catch (e) {}
   }
+
   function carregarContagemLocal() {
     try {
       const raw = localStorage.getItem("nc_contagem_v1");
       if (!raw) return;
       const arr = JSON.parse(raw);
-      arr.forEach((c) => contagemMap.set(c.barcode, c));
+      arr.forEach((c) => {
+        if (!Array.isArray(c.historico)) c.historico = [c.quantidade];
+        contagemMap.set(c.barcode, c);
+      });
     } catch (e) {}
+  }
+
+  function formatarDataBr(data) {
+    const d = new Date(data);
+    const dd = String(d.getDate()).padStart(2, "0");
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    return `${dd}/${mm}/${d.getFullYear()}`;
+  }
+
+  function salvarInfoSessao(nomePosto, dataCriacaoISO) {
+    try {
+      localStorage.setItem("nc_sessao_v1", JSON.stringify({ nomePosto, dataCriacaoISO }));
+    } catch (e) {}
+  }
+  function carregarInfoSessao() {
+    try {
+      const raw = localStorage.getItem("nc_sessao_v1");
+      if (!raw) return null;
+      return JSON.parse(raw);
+    } catch (e) {
+      return null;
+    }
+  }
+  function atualizarBadgePosto() {
+    el("postoBadge").textContent = tituloSessaoAtual;
   }
 
   // ==================== tela 1: catálogo ====================
@@ -805,6 +849,11 @@ if (typeof module !== "undefined") {
     }
     msg.className = "msg";
     setCatalogo(produtos);
+    el("inputNomePosto").value = "";
+    el("avisoNomePosto").style.display = "none";
+    try {
+      localStorage.removeItem("nc_sessao_v1");
+    } catch (e) {}
     mostrarResumoCatalogo();
   });
 
@@ -817,6 +866,23 @@ if (typeof module !== "undefined") {
   });
 
   el("btnIniciarContagem").addEventListener("click", () => {
+    const nomePosto = el("inputNomePosto").value.trim();
+    if (!nomePosto) {
+      el("avisoNomePosto").style.display = "";
+      el("inputNomePosto").focus();
+      return;
+    }
+    el("avisoNomePosto").style.display = "none";
+
+    const sessaoExistente = carregarInfoSessao();
+    const dataCriacaoISO =
+      sessaoExistente && sessaoExistente.dataCriacaoISO ? sessaoExistente.dataCriacaoISO : new Date().toISOString();
+
+    nomePostoAtual = nomePosto;
+    tituloSessaoAtual = `Inventário Posto ${nomePosto} — ${formatarDataBr(dataCriacaoISO)}`;
+    salvarInfoSessao(nomePosto, dataCriacaoISO);
+    atualizarBadgePosto();
+
     carregarContagemLocal();
     renderLista();
     atualizarTopbarStats();
@@ -838,6 +904,9 @@ if (typeof module !== "undefined") {
     if (salvo) {
       setCatalogo(salvo.produtos);
       mostrarResumoCatalogo();
+      const sessao = carregarInfoSessao();
+      el("inputNomePosto").value = sessao && sessao.nomePosto ? sessao.nomePosto : "";
+      el("avisoNomePosto").style.display = "none";
       el("cardCatalogoSalvo").style.display = "none";
     }
   });
@@ -1102,12 +1171,19 @@ if (typeof module !== "undefined") {
     const existente = contagemMap.get(produto.barcode);
     if (existente) {
       existente.quantidade += qtd;
+      if (!Array.isArray(existente.historico)) existente.historico = [existente.quantidade - qtd];
+      existente.historico.push(qtd);
       // reinsere no fim do Map, que é a ordem usada (invertida) pra exibir
       // o item mais recente sempre no topo da lista
       contagemMap.delete(produto.barcode);
       contagemMap.set(produto.barcode, existente);
     } else {
-      contagemMap.set(produto.barcode, { barcode: produto.barcode, descricao: produto.descricao, quantidade: qtd });
+      contagemMap.set(produto.barcode, {
+        barcode: produto.barcode,
+        descricao: produto.descricao,
+        quantidade: qtd,
+        historico: [qtd],
+      });
     }
     salvarContagemLocal();
     renderLista();
@@ -1579,16 +1655,22 @@ if (typeof module !== "undefined") {
           <div class="desc"></div>
           <div class="cod"></div>
         </div>
+        <div class="historico"></div>
         <input class="qtd" type="number" inputmode="numeric" min="0">
         <button class="del" title="remover">✕</button>
       `;
       row.querySelector(".desc").textContent = item.descricao;
       row.querySelector(".cod").textContent = item.barcode;
+      const historico = Array.isArray(item.historico) ? item.historico : [item.quantidade];
+      const histEl = row.querySelector(".historico");
+      histEl.textContent = historico.length > 1 ? historico.join(" | ") : "";
+      histEl.title = historico.length > 1 ? "Contagens: " + historico.join(" | ") : "";
       const qtdInput = row.querySelector(".qtd");
       qtdInput.value = item.quantidade;
       qtdInput.addEventListener("change", () => {
         const v = parseInt(qtdInput.value, 10);
         item.quantidade = isNaN(v) || v < 0 ? 0 : v;
+        item.historico = [item.quantidade]; // edição manual reinicia o histórico
         qtdInput.value = item.quantidade;
         salvarContagemLocal();
         renderLista();
